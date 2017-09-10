@@ -3,10 +3,10 @@ title: 'DATA 609: Homework 2'
 author: "Aaron Grzasko"
 date: "August 31, 2017"
 output:
+  pdf_document: default
   html_document:
     highlight: haddock
     theme: cosmo
-  pdf_document: default
 subtitle: The Modeling Process, Proportionality, and Geometric Similarity
 ---
   
