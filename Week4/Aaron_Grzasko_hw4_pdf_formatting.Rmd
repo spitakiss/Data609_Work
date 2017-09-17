@@ -1,0 +1,252 @@
+---
+title: 'DATA 609: Homework 4'
+author: "Aaron Grzasko"
+date: "September 15, 2017"
+output:
+  pdf_document: default
+  html_document:
+    highlight: haddock
+    theme: cosmo
+---
+    
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, comment=NA, message=FALSE )
+```
+
+
+```{r}
+library(dplyr)
+library(knitr)
+library(stringr)
+```
+
+# Page 191: Question 3  
+**Using Monte Carlo simulation, write an algorithm to calculate an approximation to $\pi$ by considering the number of random points selected inside the quarter circle.**  
+
+$$Q: x^2 + y^2=1,~x \ge0, y \ge0$$
+**where the quarter circle is taken to be inside the square**  
+
+$$S: 0 \ge x \ge 1~~\textrm{and}~~0 \ge y \ge1$$  
+
+**Use the equation**  
+
+$$\frac{\pi}{4}=\frac{\textrm{area}~Q}{\textrm{area}~S}$$
+
+We can simulate x and y values in the first quadrant by assuming both *x* and *y* variables are uniformly distributed between 0 and 1, i.e. $U(0,1)$.  
+  
+If our simulated pair of values satisfies the inequality $x^2 + y^2 \le 1$, then we assume the point is inside the quarter circle.  
+
+Our estimate of $\frac{\pi}{4}$ is calculated as the number of points simulated in the quarter circle, divided by the total number of simulated points.  
+
+We then solve for $\pi$ by multiplying by 4.
+  
+*Note: the R language supports vectorized operations; so this problem can be solved without the use of loops.*  
+
+
+```{r}
+# function to estimate pi using sample size, n
+pi_est <- function(n){
+    myrand.x <- runif(n) # generate random x values between 0 and 1
+    myrand.y <- runif(n) #  gnerate random y values between 0 and 1
+    sum(myrand.x^2 + myrand.y^2 <=1) / n * 4
+}
+
+# specify various sample sizes, from 10 to 10 million
+n <- c(10,100,1000,10000,100000,1000000,10000000)
+
+# apply pi estimate function for specified sample sizes 
+set.seed(1981)
+my_est <- sapply(n, pi_est)
+
+# save results in data frame, format and print result
+n_text <- formatC(n, format="d",big.mark = ",") 
+mydf <- data.frame(sample_size = n_text, pi_estimate = my_est, pi = pi,abs_diff = abs(my_est - pi))
+kable(mydf, digits = 5, align = "rrrr")
+```
+   
+In our results table above, we see that the approximation for $\pi$ improves as the number of our simulated sample size increases.  
+
+# Page 194, Question 1  
+  
+**Use the middle-square method to generate the following random number sequences.**  
+  
+Below we construct a function to implement the middle-square method based on seed value and a specified sequence length.  Our function is robust enough to handle seed values of varying sizes.  
+
+```{r}
+
+# random number generator function; employs middle square method
+# inputs: n: number of random numbers to be generated; x0: seed number of 4 digits or higher
+# output: vector of pseudorandom integers
+rand_ms <- function(n, x0){
+  
+  # initialize with seed value
+  x <- x0
+  
+  # number of digits required in squared number, assume odd length numbers have leading zero
+  num_dig <- (nchar(x) + nchar(x) %% 2) * 2
+  
+  # helper function to calculate next number in sequence
+  mid_sq <- function(z){
+    
+    # square number, add leading zeros if appropriate
+    z <- str_sub(paste(c(replicate(num_dig,"0"),z^2), collapse = ""),-num_dig)
+    
+    # return middle digits, convert to integer
+    as.integer(str_sub(z,start = 1 + num_dig/4 , end = num_dig - num_dig/4))
+  }
+  
+  # apply repeated iterations of mid_sq() based on previous output; append to vector
+  if (n > 1) {
+    for (i in 2:n) {
+      x <- append(x, mid_sq(x[length(x)]))
+    }
+  }
+  x
+}
+
+```
+  
+**(A): 10 random numbers using $x_0=1009$**  
+
+```{r}
+# 10 random numbers starting with seed 1009
+n <- 10
+x0 <- 1009
+myrand <- rand_ms(n, x0)
+myrand
+
+```
+
+**(b): 20 random numbers using $x_0=653217$**  
+
+```{r}
+# 20 random numbers starting with seed 653217
+n <- 20
+x0 <- 653217
+myrand <- rand_ms(n, x0)
+myrand
+
+```
+
+**(c): 15 random numbers using $x_0=3043$**  
+
+```{r}
+# 15 random numbers starting with seed 3043
+n <- 15
+x0 <- 3043
+myrand <- rand_ms(n, x0)
+myrand
+
+```
+  
+
+  
+**(d): Comment about the results of each sequence. Was there cycling?  Did each sequence degenerate rapidly?**  
+
+* Part A: No cycling, but the sequence is degenerating rapidly.  After the first ten numbers in the sequence, all values are equal to zero.  
+* Part B: No obvious cycling or degeneration in the first 20 draws.  
+* Part C: The sequence begins to cycle at the 9th value in the sequence. At this point, we see the following repeating sequence : 6,100, 2,100, 4,100, 8,100
+  
+## Page 201, Question 4  
+  
+***Horse Race* - Construct and perform a Monte Carlo simulation of a horse race.  Simulate the Mathematical Derby with the entries and odds shown in the following table**  
+
+```{r}
+# data
+horse <- c("Euler's Folly","Leapin' Leibniz","Newton Lobell","Count Cauchy","Pumped up Poisson",
+           "Loping L'Hopital","Steamin' Stokes","Dancin' Dantzig")
+payoff <- c(7,5,9,12,4,35,15,4)
+stake <- rep(1,8)
+odds <- paste0(payoff,"-",stake)
+
+# print table
+mydf <- data.frame(number = 1:8,horse=horse, odds=odds)
+kable(mydf)
+```
+  
+**Construct and perform a Monte Carlo simulation of 1000 horse races.**
+
+First, we'll calculate the implied probability of each horse winning.  
+  
+```{r}
+# probability of each horse winning
+probs <- 1 - payoff / (payoff + stake)
+probs
+```
+  
+
+The implied probabilities do not sum up to 1:  
+```{r}
+sum(probs)
+```
+  
+Generally speaking, implied probabilities sum up to a value greater than one.  The difference between the sum and 1 represents the bookie's edge.  In this case, the values sum to a value less than one.  This is an advantageous situation for the bettor, and is referred to as a "sure bet".  
+  
+To obtain an estimate of the true probabilities, we'll divide each implied probability by the sum of implied probabilities:  
+```{r}
+true_probs <- probs / sum(probs)
+true_probs
+```
+
+Now, our probabilities sum to 1:  
+```{r}
+sum(true_probs)
+```
+
+Let's calculate cumulative probabilities as follows:
+
+```{r}
+# vector of true, cumulative probabilities
+cumu_prob <- cumsum(true_probs)
+cumu_prob
+```
+
+We're ready for the simulation.  We will make 1,000 random draws from a standard uniform distribution.  The value of each draw corresponds to a value from our cumulative distribution, and ultimately maps to one of our eight horses.  For example, if our first draw is 0.05, we assign a win to horse one because the value is less than the rightmost value of 0.1304 for horse one.  If, on the other hand, we draw a 0.85, we map the win to horse eight, as the random draw is higher than the rightmost value for horse seven, but lower than the rightmost value for horse eight.    
+
+```{r}
+# simulate 1k random U(0,1) variables 
+sims <- 1000
+set.seed(5678)
+myrand <- runif(sims)
+
+# match random numbers with horse cumulative probability
+winners <- findInterval(myrand,cumu_prob)+1
+
+# summarize simulation results
+sim_results <- data.frame(number = winners) %>%
+  group_by(number) %>%
+  count() %>%
+  rename(wins = n) %>%
+  mutate(sim_prob = sprintf("%.2f%%", 100* wins/sims))
+
+# combine sim results with original odds data frame; print
+mydf <- mydf %>%
+  inner_join(sim_results, by="number")
+mydf$true_prob <- sprintf("%.2f%%", 100*true_probs)
+
+kable(mydf)
+                          
+```
+
+**Which horse won the most races?**  
+
+Dancin' Dantzig
+  
+**Which horse won the the fewest races?**  
+
+Loping L'Hopital  
+  
+**Do these results surprise you?**  
+
+No, the simulation results are very much in line with our long run expectations.  
+
+Given an infinite number of trials, we expect both Pumped up Poisson and Dancin' Dantzig to tie for the most wins.  In our 100 simulations, Dancin' Dantzig won 3 more races than Pumped up Poisson; so their win totals were still very close. 
+  
+We also expected Loping L'Hopital to win the fewest number of races, and this is what our simulation showed us.  
+  
+**Provide the tallies of how many races each horse won with your output.**  
+
+See table provided above.  
+
+
+
