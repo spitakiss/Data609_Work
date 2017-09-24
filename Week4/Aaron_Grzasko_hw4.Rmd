@@ -20,6 +20,7 @@ library(tidyr)
 library(knitr)
 library(kableExtra)
 library(stringr)
+library(ggthemes)
 ```
 
 <style>
