@@ -1,0 +1,367 @@
+---
+title: 'DATA 609: Homework 9'
+author: "Aaron Grzasko"
+date: "October 20, 2017"
+output:
+  pdf_document: default
+  html_document:
+    highlight: haddock
+    theme: cosmo
+subtitle: Game Theory
+---
+    
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, comment=NA, message=FALSE )
+```
+
+
+```{r}
+library(knitr)
+library(ggplot2)
+library(lpSolve)
+
+```
+
+<style>
+    .question {color:gray;}
+</style>
+  
+## Page 385, Question 1, Parts A and C
+
+
+<p class="question">Using the definition provided for the movement diagram, determine whether the following zero-sum games have a pure strategy Nash equilibrium. If the game does have a pure strategy Nash equilibrium, state the Nash equilibrium. Assume the row player is maximizing his payoffs which are shown in the matrices below.</p>  
+  
+### Part A
+
+![](https://raw.githubusercontent.com/spitakiss/Data609_Work/master/Week9/q1_a_arrows_mod.png)  
+  
+Rose has a dominant strategy of R1, and has an expected payout of 10.  The pure strategy Nash equilibria are R1, C1 and R1, C2.  
+</br>  
+
+### Part C  
+ 
+![](https://raw.githubusercontent.com/spitakiss/Data609_Work/master/Week9/q1_c_arrows_mod.png)  
+  
+The pitcher has a dominant strategy of throwing a knuckleball. In a pure strategy game, the Nash equilibrium occurs when the batter guesses knuckleball and the pitcher throws a knuckleball. The expected batting average is 0.250.
+
+## Page 404, Question 2a  
+  
+<p class="question">Build a linear programming model for each player's decisions and solve it both geometrically and algebraically.  Assume the row player is maximizing the payoffs shown in the matrices below.</p>  
+  
+This is the same problem presented in question 1.a from section 10.1:  
+  
+
+![](https://raw.githubusercontent.com/spitakiss/Data609_Work/master/Week9/q1_a_arrows_mod.png)  
+  
+### Modeling Rose's Decision  
+  
+**Problem Statement**  
+Below are the variable declarations, objective, and constraints of our linear model from Rose's perspective:  
+  
+Let  
+$$\begin{aligned}
+x &=& \textrm{percent of time playing R1} \\
+(1- x) &=& \textrm{percent of time playing R2} \\
+VP &=& \textrm{value of payoff for Rose}
+\end{aligned}$$  
+
+
+Objective:    
+
+$$\textrm{Maximize}~VP$$  
+subject to
+
+$$\begin{aligned}
+VP &\le& 10x+5(1-x)\\
+VP &\le& 10x\\
+x &\ge& 0 \\
+x &\le& 1
+\end{aligned}$$  
+  
+
+  
+**Graphical Analysis**   
+  
+```{r}
+# intersection points
+myint <- data.frame(x=c(0,0,1),y=c(0,5,10))
+
+# plot
+ggplot(data.frame(x=c(-1,1)),aes(x)) + 
+  stat_function(fun=function(x) 5*x + 5, geom="line", aes(col='Colin pure C1: 10x + 5(1-x)')) +
+  stat_function(fun=function(x) 10*x, geom="line", aes(col='Colin pure C2: 10x')) +
+  geom_vline(xintercept=0, aes(col= 'x=0')) +
+  geom_vline(xintercept=1, aes(col= 'x=1')) + 
+  geom_point(data=myint, aes(x,y)) + 
+  theme_bw() + 
+labs(title = 'Graphical Analysis for Rose', y = "VP") +
+  annotate('text', x = 0.1, y = 15, label="x = 0", size=3 ) +
+  annotate('text', x = 1.1, y = 15, label="x = 1", size=3 ) + 
+  annotate('text', x = -0.1, y = 0.2, label="(0, 0)", size=3 ) +
+  annotate('text', x = -0.1, y = 5.2, label="(0, 5)", size=3 ) +
+  annotate('text', x = 0.85, y = 10.5, label="(1, 10)", size=3 )
+```  
+  
+From the plot above, we see that VP takes a maximum value of 10 when x = 1 (i.e. when Rose plays R1 100% of the time).  
+  
+**Algebraic Analysis**  
+  
+There are four constraints, with $_4C_2=6$ possible ways of intersecting four distinct constraints two at a time.  The constraint boundaries for $x \ge 0$ and $x \ge 1$ are parallel; so we are left with five possible intersection points.  The first four intersection points are found by setting $x=0$ and $x=1$ in the constraints representing Colin's two pure strategies:  
+  
+$$\begin{aligned}
+x=0:& & VP = 10 \times 0 + 5 \times (1- 0) = 5 \\
+x=1:& & VP = 10 \times 1 + 5 \times (1 - 1) = 10 \\
+x=0: & & VP = 10 \times 0 = 0 \\
+x=1: & & VP = 10 \times  = 10
+\end{aligned}$$
+  
+The fifth intersection point is found by setting the following two constraint equations equal to each other:  
+$$\begin{aligned}
+VP &=& 10x + 5(1-x) = 5x + 5 \\
+VP &=& 10x
+\end{aligned}$$  
+
+Solving the two equations simultaneously yields $x=1$, and $VP = 10$.  
+
+We'll now summarize our potential solutions and note which solutions are feasible:  
+  
+```{r, echo=FALSE}
+x <- c(0,1,0,1,1)
+VP <- c(5,10,0,10,10)
+feasible <- c('N','Y','Y','Y','Y')
+mydf <- data.frame(x=x, VP = VP, Feasible = feasible)
+kable(mydf, align = c("r","r","c"))
+```
+  
+
+### Modeling Colin's Decision  
+  
+**Problem Statement**  
+  
+The problem from Colin's perspective can be stated as follows:  
+  
+Let  
+$$\begin{aligned}
+y &=& \textrm{percent of time playing C1} \\
+(1- y) &=& \textrm{percent of time playing C2} \\
+VP &=& \textrm{value of payoff for Rose}
+\end{aligned}$$  
+  
+
+Objective:    
+
+$$\textrm{Minimize}~VP$$  
+subject to
+
+$$\begin{aligned}
+VP &\ge& 10\\
+VP &\ge& 5y\\
+y &\ge& 0 \\
+y &\le& 1
+\end{aligned}$$ 
+  
+**Graphical Analysis**  
+  
+```{r}
+# intersection points
+myint <- data.frame(x=c(0,0,1,1,2),y=c(0,10,5,10,10))
+
+# plot
+ggplot(data.frame(x=c(-1,2)),aes(x)) + 
+  stat_function(fun=function(x) 10, geom="line", aes(col='Rose pure R1: 10')) +
+  stat_function(fun=function(x) 5*x, geom="line", aes(col='Rose pure R2: 5x')) +
+  geom_vline(xintercept=0, aes(col= 'y=0')) +
+  geom_vline(xintercept=1, aes(col= 'y=1')) + 
+  geom_point(data=myint, aes(x,y)) + 
+  theme_bw() + 
+  labs(title = 'Graphical Analysis for Colin', y = "VP", x = 'y') +
+  annotate('text', x = 0.1, y = 15, label="y = 0", size=3 ) +
+  annotate('text', x = 1.1, y = 15, label="y = 1", size=3 ) + 
+  annotate('text', x = -0.1, y = 0.2, label="(0, 0)", size=3 ) +
+  annotate('text', x = -0.1, y = 10.5, label="(0, 10)", size=3 ) +
+  annotate('text', x = 0.85, y = 10.5, label="(1, 10)", size=3 ) + 
+  annotate('text', x = 0.85, y = 5.5, label="(1, 5)", size=3 ) + 
+  annotate('text', x = 1.85, y = 10.5, label="(2, 10)", size=3 )
+```  
+  
+Given our constraints and the plot above, Colin can play C1 any percent of the time between 0% and 100%.  The minimum value of VP remains at 10, regardless of which value of *y* selected.  
+  
+**Algebraic Analysis**  
+  
+Once again, there are $_4C_2=6$ possible ways of intersecting four distinct constraints taken two at a time.  The constraint boundaries for $y \ge 0$ and $y \ge 1$ are parallel; so we are left with five possible intersection points.  The first four intersection points are found by setting $y=0$ and $y=1$ in the constraints representing Rose's two pure strategies:  
+  
+$$\begin{aligned}
+y=0:& & VP = 10 \\
+y=1:& & VP = 10  \\
+y=0: & & VP = 5 \times 0 = 0 \\
+y=1: & & VP = 5 \times 1  = 5
+\end{aligned}$$
+  
+The fifth intersection point is found by setting the following two constraint equations equal to each other:  
+$$\begin{aligned}
+VP &=& 10 \\
+VP &=& 5y
+\end{aligned}$$  
+
+Solving the two equations simultaneously yields $y=2$, and $VP = 10$.  
+
+We'll now summarize our potential solutions and note which solutions are feasible:  
+  
+```{r, echo=FALSE}
+y <- c(0,1,0,1,2)
+VP <- c(10,10,0,5,10)
+feasible <- c('Y','Y','N','N','N')
+mydf <- data.frame(y=y, VP = VP, Feasible = feasible)
+kable(mydf, align = c("r","r","c"))
+```
+  
+Based on the feasible solutions, we see that Colin minimizes Rose's payoff by playing C1 either 0% or 100% of the time.  
+
+**Sensitivity Analysis**  
+If Rose does not play optimally (i.e. R1 100% of the time), Colin can take advantage by playing the pure C2 strategy.  This is evident when reviewing the geometric analysis from Rose's perspective.  
+  
+## Page 413, Question 3  
+  
+<p class="question">We are considering the alternatives A, B, or C or a mix of the three alternatives under uncertain conditions of the economy.  The payoff matrix is as follows:  </p>  
+  
+```{r}
+mydf <- data.frame(Num1=c(3000,1000,4500),Num2=c(4500,9000,4000),Num3=c(6000,2000,3500))
+row.names(mydf) <- c('A','B','C')
+kable(mydf)
+```  
+  
+<p class="question">Set up and solve both the investor's and the economy's game.</p>  
+  
+  
+**Model Investor's Decision**  
+  
+Let  
+
+$$\begin{aligned}
+V &=& \textrm{payoff} \\
+x_1 &=& \textrm{percentage in alternative A} \\
+x_2 &=& \textrm{percentage in alternative B} \\
+x_3=(1 - x_1  - x_2) &=& \textrm{percentage in alternative C}
+\end{aligned}$$  
+  
+
+Objective:    
+
+$$\textrm{Maximize}~V$$  
+subject to
+
+$$\begin{aligned}
+V \le 3x_1+1x_2+4.5(1-x_1-x_2)\\
+V \le 4.5x_1+9x_2+4(1-x_1-x_2)   \\
+V \le 6x_1+2x_2+3.5(1-x_1-x_2) \\
+x_1,x_2,(1-x_1-x_2) \ge 0 \\
+x_1,x_2,(1-x_1-x_2) \le 1
+\end{aligned}$$ 
+  
+```{r}
+# order of vectors: -V, x1 coeff, x2 coeff, x3 coeff, arranged in ">=" form
+# rearranged conditions 1-3 algebraically so that form looks like 
+# -V + (coeff x1 - coeff x3) + (coeff x2 -   coeff x3) + coeff x3
+# this rearrangement is due to condition x3 = 1 - x2 - x3 
+
+# objective function
+obj <- c(1,0,0,0)
+
+# left side constraints
+r1 <- c(-1,-1.5,-3.5,4.5)   # condition 1
+r2 <- c(-1,0.5,5,4)         # condition 2
+r3 <- c(-1,2.5,-1.5,3.5)    # condition 3
+r4 <- c(0,1,0,0)            # x1 >=0
+r5 <- c(0,0,1,0)            # x2 >=0
+r6 <- c(0,0,0,1)            # x3 >= 1 note: x3 value must be 1 given current model form
+r7 <- c(0,-1,0,0)           # x1 <= 1
+r8 <- c(0,0,-1,0)           # x2 <= 1
+r9 <- c(0,0,0,-1)           # x3 <= 1 note: x3 value must be 1 given current model form
+
+A <- rbind(r1,r2,r3,r4,r5,r6,r7,r8,r9)
+
+# right side constraints, ">=" format
+b <- c(0,0,0,0,0,1,-1,-1,-1) 
+
+# lp function 
+mylp <- lp("max", obj, A, rep(">=", 9), b)
+
+# solution
+mylp
+mylp$solution
+
+```
+  
+From the model output, we see that V is maximized at \$4,125, with 25% allocated to alternative A, and 0% allocated to alternative B. Because of the relationship $x_3=1-x_1-x_2$, the allocation to alternative C is 75%.   
+
+**Model Economy's Decision**    
+
+  
+Let  
+
+$$\begin{aligned}
+V &=& \textrm{investor's payoff} \\
+y_1 &=& \textrm{percentage in condition 1} \\
+y_2 &=& \textrm{percentage in condition 2} \\
+y_3=(1 - y_1  - y_2) &=& \textrm{percentage in condition 3}
+\end{aligned}$$  
+  
+
+Objective:    
+
+$$\textrm{Minimize}~V$$  
+  
+subject to  
+  
+$$\begin{aligned}
+V \ge 3y_1+4.5y_2+6(1-y_1-y_2)\\
+V \ge y_1+9y_2+2(1-y_1-y_2)   \\
+V \ge 4.5y_1+4y_2+3.5(1-y_1-y_2) \\
+y_1,y_2,(1-y_1-y_2) \ge 0 \\
+y_1,y_2,(1-y_1-y_2) \le 1
+\end{aligned}$$  
+  
+
+  
+```{r}
+# order of vectors: -V, y1 coeff, y2 coeff, y3 coeff, arranged in ">=" form
+# rearranged conditions 1-3 algebraically so that form looks like 
+# -V + (coeff y1 - coeff y3) + (coeff x2 -   coeff y3) + coeff y3
+# this rearrangement is due to condition y3 = 1 - y2 - y3 
+
+# objective function
+obj <- c(1,0,0,0)
+
+# left side constraints
+r1 <- c(1,3,1.5,-6)       # condition 1
+r2 <- c(1,1,-7,-2)          # condition 2
+r3 <- c(1,-1,-0.5,-3.5)     # condition 3
+r4 <- c(0,1,0,0)            # y1 >=0
+r5 <- c(0,0,1,0)            # y2 >=0
+r6 <- c(0,0,0,1)            # y3 >= 1 note: y3 value must be 1 given current model form
+r7 <- c(0,-1,0,0)           # y1 <= 1
+r8 <- c(0,0,-1,0)           # y2 <= 1
+r9 <- c(0,0,0,-1)           # y3 <= 1 note: y3 value must be 1 given current model form
+
+A <- rbind(r1,r2,r3,r4,r5,r6,r7,r8,r9)
+
+# right side constraints, ">=" format
+b <- c(0,0,0,0,0,1,-1,-1,-1) 
+
+# lp function 
+mylp <- lp("min", obj, A, rep(">=", 9), b)
+
+# solution
+mylp
+mylp$solution
+```
+  
+The minimum payout to the investor V is $4,125.  This payout is achieved by mixing 62.5% in condition 1, 0% in condition 2, and (100% - 62.5%) = 37.5% in condition 3.  
+  
+## Page 420, Question 1  
+  
+<p class="question">Use the maximin and minimax method and the movement diagram to determine if any pure strategy solutions exists.  Assume the row player is maximizing his payoffs which are shown in the matrices below.</p>  
+  
+![](https://raw.githubusercontent.com/spitakiss/Data609_Work/master/Week9/q1_c_arrows_mod2.png)  
+  
+In this example, Rose's maximin row value is 10, which corresponds with strategy R1.  Colin's minimax column value is also 10, which corresponds to both C1 and C2.  Because the maximin and minimax values are the same, this game has a saddle point.  Actually, in this particular game, there are two saddle points, corresponding to R1,C1 and R1, C2.  Both saddle points have a value of 10.
