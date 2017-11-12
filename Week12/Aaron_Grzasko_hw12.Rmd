@@ -1,0 +1,395 @@
+---
+title: 'DATA 609: Homework 12'
+author: "Aaron Grzasko"
+date: "11/6/2017"
+output:
+  pdf_document: default
+  html_document:
+    highlight: haddock
+    theme: cosmo
+subtitle: Optimization of Continuous Models
+---
+    
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, comment=NA, message=FALSE )
+```
+
+
+<style>
+    .question {color:gray;}
+</style>  
+  
+## Page 576, Question 2  
+  
+<p class="question">Consider a company that allows back ordering. That is, the company notifies customers that a temporary stock-out exists and that their order will be filled shortly. What conditions might argue for such a policy? </p>  
+  
+Conditions that are favorable for back ordering may include one or more of the following:  
+  
+ * Products with short life-cycles due to rapidly evolving consumer preferences
+ * Perishable products
+ * Items with high storage costs, particularly when storage costs are proportional to the number of goods being stored  
+   
+<p class="question">What effect does such a policy have on storage costs?</p>  
+  
+If marginal costs increase with each new item stored, then a back-order policy will reduce total storage costs.  The policy impact is less clear with more complicated storage cost structures.  
+  
+<p class="question">Should costs be assigned to stock-outs? Why? How would you make such an assignment?</p>  
+  
+Yes, costs should be assigned to stock-outs: their presence will impact demand unfavorably, and ultimately result in lower revenue.  For modeling purposes, we can implement the stock-out "cost" by reducing the assumed quantity demanded per unit time interval.  Alternatively, we may decide to allocate an explicit dollar cost per unit time during a stock-out.  We take the latter approach below.  
+  
+<p class="question">What assumptions are implied by the model in Figure 13.7?</p>  
+  
+Our model assumes that demand rate is constant over time.  In other words, the quantity demanded over time can be expressed by a line with constant slope.  A more realistic model would likely involve a reduced demand rate, given the presence of a stock out.  
+  
+<p class="question">Suppose a "loss of goodwill cost"" of $w$ dollars per unit per day is assigned to each stock-out. Compute the optimal order quantity $Q^*$ and interpret your model.</p>  
+
+<center>![](https://raw.githubusercontent.com/spitakiss/Data609_Work/master/Week12/ch13.1.2_img_mod3.png)</center>  
+
+**Problem Statement**  
+We are trying to find optimal quantity, $Q^*$ and back-order quantity, $B^*$, so that the average daily cost, $c$, is minimized.  
+  
+**Variable Declarations**  
+Let:  
+  
+$q =$ order quantity for each delivery  
+$b=$ maximum acceptable back-order quantity  
+$t_1=$ time until inventory falls to zero  
+$t_2=$ stock out time  
+$t=t_1+t_2$  i.e. total cycle time  
+$w=$ loss of goodwill cost per day, constant  
+$d=$ delivery cost per run, constant  
+$s=$ storage cost per day, constant  
+$C =$ total cost per cycle  
+$c=$ average daily cost =$\frac{C}{t}$  
+$Q^*=$ optimal order quantity per delivery  
+$B^*=$ optimal, maximum allowed back-order quantity
+  
+  
+**Triangle Similarity**  
+To complete this problem, we must first recognize that the following triangles--see the labeled diagram--are similar:  
+  
+$$\Delta ABC \sim ~ \Delta AFE \sim \Delta CDE$$
+
+
+
+Given similar triangles, we can know the following equations are true:  
+
+$$\frac{t_1}{t}=\frac{q-b}{q}$$
+  
+Rearranging the equation above:  
+  
+$$t_1 = \frac{q-b}{q}t$$
+  
+We also know the following proportions are equal:  
+  
+$$\frac{t_2}{t}=\frac{b}{q}$$
+  
+Rearranging the equation above, we have:  
+  
+$$t_2=\frac{b}{q}t$$
+  
+**Cost Equation**  
+Now, let's set up our cost equation:  
+  
+$$C=d+\frac{s(q-b)}{2}t_1+\frac{wb}{2}t_2$$  
+  
+Let's substitute in our previously calculated expressions for $t_1$ and $t_2$:  
+  
+$$C= d+\frac{s(q-b)}{2}\frac{(q-b)}{q}t +\frac{wb}{2}\frac{b}{q}t$$  
+$$=d + \frac{t}{2q}\Big[s(q-b)^2+wb^2\Big]$$  
+  
+Let $c=\frac{C}{t}=$ average cost per day.  Divide the equation above by $t$:  
+  
+$$c=\frac{d}{t} + \frac{1}{2q}\Big[s(q-b)^2+wb^2\Big]$$
+We can substitute $t = \frac{q}{r}$ into the equation above to produce:  
+  
+$$c=\frac{rd}{q}+\frac{1}{2q}\Big[s(q-b)^2+wb^2\Big]$$  
+  
+**Find Critical Points**  
+Calculate partial derivative with respect to $b$ and set equal to 0:  
+  
+$$\frac{\partial c}{\partial b}=0+\frac{1}{2q}\Big[-2s(q-b) + 2wb \Big]=0$$  
+  
+$$=-s+\frac{bs}{q}+\frac{wb}{q}=0$$  
+  
+$$b \big(\frac{s+w}{q}\big)=s$$  
+  
+$$b=\frac{sq}{s+w}=B^*$$
+  
+Calculate partial derivative with respect to $q$:  
+  
+$$-\frac{rd}{q^2}+\frac{4qs(q-b)-2s(q-b)^2}{4q^2}-\frac{wb^2}{2q^2}$$  
+  
+$$=\frac{-rd}{q^2}+\frac{4sq(q-b)-2s(q-b)^2}{4q^2}-\frac{wb^2}{2q^2}$$  
+$$=\frac{-2rd}{2q^2}+\frac{2sq(q-b)}{2q^2}-\frac{s(q-b)^2}{2q^2}-\frac{wb^2}{2q^2}$$  
+$$\frac{-2rd+2sq^2-2sqb-s[q^2-2bq+b^2]-wb^2}{2q^2}$$  
+  
+$$=\frac{-2rd+sq^2-sb^2-wb^2}{2q^2}$$
+  
+$$=\frac{-2rd+sq^2-b^2(s+w)}{2q^2}$$  
+
+  
+Substitute $b=\frac{sq}{s+w}$:  
+  
+$$=\frac{-2rd+sq^2-\frac{s^2q^2}{s+w}}{2q^2}$$  
+$$=\frac{-rd}{q^2}+\frac{s}{2}-\frac{s^2}{2(s+w)}$$
+Set the derivative equal to 0:  
+  
+$$\frac{rd}{q^2}=\frac{s^2+sw-s^2}{2(s+w)}$$  
+  
+$$q^2=\frac{2rd(s+w)}{sw}$$  
+$$q=\sqrt{\frac{2rd(s+w)}{sw}}=Q^*$$
+  
+**Determine Minimum or Maximum**  
+Now we'll calculate the second partial derivatives:  
+  
+$$f_{bb}=\frac{\partial^2 c}{\partial b^2}=\frac{s+w}{q}$$  
+$$f_{qq}=\frac{\partial^2 c}{\partial q^2}=\frac{2rd}{q^3}$$  
+  
+$$f_{bq}=\frac{\partial c }{\partial q \partial b}=-b\frac{(s+w)}{q^2}$$  
+At the critical points $(B^*,Q^*)$:  
+  
+$$f_{bb}(B^*,Q^*)= \frac{s+w}{Q^*}=\frac{s+w}{\sqrt{\frac{2rd(s+w)}{sw}}}$$  
+
+$$f_{qq}(B^*,Q^*)=\frac{2rd}{\Big[\frac{2rd(s+w)}{sw}\Big ]^{3/2}}$$  
+  
+$$f_{bq}(B^*,Q^*)=-\frac{sQ^*}{s+w}\frac{s+w}{Q^{*2}}=\frac{s}{Q^*}=\frac{s}{\sqrt{\frac{2rd(s+w)}{sw}}}$$  
+<br />  
+
+Let $D=f_{bb}(B^*,Q^*)f_{qq}(B^*,Q^*)-\big[f_{bq}(B^*,Q^*) \big]^2$  
+
+If $D > 0$, then $c$ has a relative minimum at critical point $(B^*,Q^*)$.
+  
+$$D=\frac{s+w}{\Big[\frac{2rd(s+w)}{sw} \Big]^{1/2}} \times \frac{2rd}{{\Big[\frac{2rd(s+w)}{sw}\Big ]^{3/2}}}- \frac{s^3w}{2rd(s+w)}$$  
+  
+$$=\frac{(s+w) \times 2rd}{\Big[\frac{2rd(s+w)}{sw} \Big]^2}- \frac{s^3w}{2rd(s+w)}$$  
+  
+$$=\frac{2rd(s+w)(s^2w^2)-2rd(s+w)s^2w}{\big[2rd(s+w)\big]^2}$$  
+$$=\frac{ws^2(w-1)}{s+w}$$
+  
+We assume constants $s$ and $w$ are both positive.  As long as $w>1$, the expression above is positive, which means the cost function has a relative minimum at point $(B^*,Q^*)$.
+  
+
+
+
+## Page 585, Question 2  
+  
+<p class="question">Find the local minimum value of the function</p>  
+  
+$$f(x,y)=3x^2+6xy+7y^2-2x+4y$$  
+  
+### Graph of Function  
+  
+```{r}
+library(lattice)
+
+# f(x,y) 
+func <- function(x,y) 3*x^2 + 6*x*y+7*y^2-2*x+4*y
+
+# set up some lattice plot
+theta <- seq(-3, 3, 0.3)
+data <- expand.grid(theta, theta)
+data$z <- func(data[,1],data[,2])
+names(data) <- c('x','y','z')
+wireframe(z ~ x * y, data,
+          scales = list( arrows = FALSE),
+          col.regions=rainbow(100),
+          aspect = c(1, 1),
+          drape = TRUE,
+          main = "Plot of f(x,y)",
+          par.settings = list(axis.line = list(col = "transparent"))
+          )
+```
+  
+
+  
+### Analytical Solution
+  
+**First Partial Derivatives**  
+
+$$\frac{\partial f}{\partial x}=6x+6y-2$$  
+  
+$$\frac{\partial f}{\partial y}=6x+14y+4$$  
+  
+**Critical Points**  
+  
+Set $\frac{\partial f}{\partial x}=0$:  
+
+$$6x+6y-2=0$$  
+  
+$$6x = 2-6y$$  
+$$x=\frac{1}{3}-y$$  
+  
+Set $\frac{\partial f}{\partial y}=0$:  
+  
+$$6x+14y+4=0$$  
+With substitution:  
+  
+$$6(\frac{1}{3}-y)+14y+4=0$$  
+$$8y=-6$$  
+$$y=-\frac{3}{4}$$
+  
+Solve for x:  
+  
+$$x = \frac{1}{3} +\frac{3}{4}$$  
+  
+$$=\frac{13}{12}$$
+
+**Second Partial Derivatives**  
+  
+$$f_{xx}=\frac{\partial^2 f}{\partial x^2}=6$$  
+
+$$f_{yy}=\frac{\partial^2 f}{\partial y^2}=14$$  
+
+  
+$$f_{xy}=\frac{\partial^2f }{\partial y \partial x}=1$$ 
+  
+Let $D=f_{xx}(a,b)f_{yy}(a,b)-\big[f_{xy}(a,b) \big]^2$  
+
+If $D > 0$, then $c$ has a relative minimum at critical point $(a,b)$.  
+  
+$$D = 6 \times 14 - 1^2 = 84$$  
+$D$ is greater than zero; so the function $f(x,y)$ has a relative minimum at the critical point $(\frac{13}{12},-\frac{3}{4})$.  
+  
+The value of our function at the critical point is  
+ 
+ $$f\Big(\frac{13}{12},-\frac{3}{4}\Big)=3\Big(\frac{13}{12}\Big)^2+6 \Big(\frac{13}{12}\Big) \Big(-\frac{3}{4}\Big)+7 \cdot \Big(-\frac{3}{4}\Big)^2-2\Big(\frac{13}{12}\Big)+4\Big(-\frac{3}{4}\Big)$$  
+$$=\frac{507-702+567-312-432}{144}$$  
+$$=-\frac{31}{12}$$
+ 
+   
+### Gradient Descent  
+
+Finally, let's check our work.  We'll find the local minimum by implementing the gradient descent algorithm:  
+  
+
+```{r}
+# function to be minimized:  takes x and y values 
+func <- function(x,y) 3*x^2 + 6*x*y+7*y^2-2*x+4*y
+
+# partial derivative function: 
+# input:  x and y values, original function, var to differentiate
+partial.d <- function(x,y, func, dvar) eval(D(body(func),dvar))
+
+# gradient descent function
+grad_d <- function(func, x0, y0, lambda, steps) {
+    
+    # initialize x and y values
+    xk = x0
+    yk = y0
+    
+    # loop through specified number of iterations
+    for (i in 1:steps){
+         xk <- xk - lambda * partial.d(xk,yk,func,'x')
+         yk <- yk - lambda * partial.d(xk,yk,func,'y')
+    }
+    
+    # output critical point and value of function at critical point
+    list(x=xk,y=yk,min_val=func(xk,yk))
+    
+}
+
+# run gradient descent
+grad_d(func,0.01,0.01,1/16,100)
+
+```
+  
+
+
+## Page 591, Question 5  
+
+Find the hottest point $(x,y,z)$ along the elliptical orbit  
+  
+$$4x^2+y^2+4z^2=16$$  
+  
+where the temperature function is  
+  
+$$T(x,y,z)=8x^2+4yz-16z+600$$  
+  
+This is a constrained optimization problem that can be solved using Lagrange multipliers.  
+We need to find the maximum value of the following function :  
+
+$$L(x,y,z,\lambda)=8x^2+4yz-16z+600 - \lambda \big[4x^2 + y^2 + 4z^2 -16 \big]$$  
+  
+  
+**Partial Derivatives Set Equal to Zero**
+$$\frac{\partial L}{\partial x}=16x-8\lambda x=0$$  
+  
+$$\frac{\partial L}{\partial y}=4z-2\lambda y=0$$  
+$$\frac{\partial L}{\partial z}=4y-16-8\lambda z=0$$  
+$$\frac{\partial L}{\partial \lambda}=-4x^2-y^2-4z^2+16=0$$  
+  
+**Solve Unknowns**  
+  
+From the equation for $\frac{\partial L}{\partial x}=0$:  
+   
+$$16x=8 \lambda x$$   
+Solve $\lambda= 2$.  
+
+From the equation for $\frac{\partial L}{\partial y}=0$ with $\lambda=2$:  
+  
+$$4z=4y$$  
+Solve $z=y$  
+
+  
+From the equation for $\frac{\partial L}{\partial z}=0$ with $\lambda=2, z=y$:  
+
+$$4z-8\times2z=16$$  
+Solve $z=-\frac{4}{3}$.  Because $z=y$, $y=-\frac{4}{3}$.  
+  
+From the equation for $\frac{\partial L}{\partial \lambda}=0$ with $\lambda=2$, $z=-\frac{4}{3}, y=-\frac{4}{3}$:  
+  
+$$-4x^2=\frac{16}{9}+4 \times \frac{16}{9}-16$$  
+$$x^2=-\frac{4}{9}-\frac{16}{9}+4$$  
+$$x^2=\frac{16}{9}$$  
+Solve $x=\pm\frac{4}{3}$  
+  
+**Maximum Temperature**
+
+Plug critical values into $T(x,y,z)$:  
+
+$$T\big( \pm\frac{4}{3},-\frac{4}{3},-\frac{4}{3}\big)=8 \Big[\pm\frac{4}{3}\Big]^2+4 \times -\frac{4}{3} \times - \frac{4}{3}-16 \times \frac{-4}{3}+600$$  
+$$=642 \frac{2}{3}$$ 
+  
+**Check Work**  
+  
+We can check our work using the `solnp()` function in the *Rsolnp* library.  This routine is configured to find the minimum value of function given one or more equality constraints.  Because we are solving for the maximum, we need to change the sign of all terms in $T(x,y,z)$ and then find the minimum of this revised function.  With this modification, the routine solves for the correct parameters $x, y,$ and $z$ to maximize the original temperature function,  but the  signs of the function maximum and $\lambda$ are now reversed.  
+
+```{r, results = 'hide'}
+library(Rsolnp)
+
+# (-1) * temp function 
+T.xyz_sign <- function(x) -1 * (8 * x[1]^2 + 4*x[2]*x[3] - 16*x[3] + 600)
+
+# equality constraint function expression
+h.xyz <- function(x) 4*x[1]^2 +x[2]^2 + 4*x[3]^2
+
+# solve: initial guess, temp function, constraint expression, equality value
+soln <- solnp(c(1,1,1), T.xyz_sign, h.xyz, 16)
+```
+
+```{r}
+# critical points
+soln$pars
+
+# lagrange multipler: reversing sign of function output
+-soln$lagrange
+
+# maximum value: reversing sign of function output
+-soln$values[length(soln$values)]
+
+```
+   
+   
+## References  
+  
+-Lattice plots: https://stackoverflow.com/questions/33480681/remove-panel-outline-add-axis-ticks-and-colour-scale-outline-in-lattice-wirefr  
+-solnp() documentation: https://www.rdocumentation.org/packages/Rsolnp/versions/1.16/topics/solnp
+
+  
+
+  
+ 
+  
+ 
+  
