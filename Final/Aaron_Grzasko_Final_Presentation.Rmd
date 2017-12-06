@@ -1,0 +1,642 @@
+---
+title: "Data 609: Final Project"  
+subtitle: "Basic Portfolio Optimization"
+author: "Aaron Grzasko"
+date: "December 5, 2017"
+output: ioslides_presentation
+    
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, comment=NA, message=FALSE, cache=TRUE )
+```
+  
+```{r results='hide'}
+library(knitr)
+library(quantmod)
+library(iterpc)
+library(DT)
+library(ggplot2)
+library(ggthemes)
+library(tidyr)
+library(dplyr)
+library(ggrepel)
+library(lpSolve)
+library(corrplot)
+library(quadprog)
+
+```
+## Intro {.smaller}  
+
+We have eight years of monthly price data for nine passively-managed funds we're considering for our retirement portfolio.  How might we use the historical data to determine the optimal investment allocation in each fund?   
+
+```{r}
+# input and print available funds 
+fund_names <- c("Vanguard Large Cap Index Fund", "Vanguard Value Index Admiral Fund",
+                "Vanguard Small Cap Value ETF","Vanguard REIT Index Admiral Fund",
+                "iShares MSCI EAFE Value ETF","iShares MSCI EAFE Small Cap ETF",
+                "Vanguard Emerging Markets Stock Index Admiral Fund", 
+                "iShares Barclays Short Treasury Bond ETF", 
+                "SPDR Barclays Capital Short-Term International Treasury Bond ETF")
+
+symbols <- c("VLCAX","VVIAX", "VBR", "VGSLX", "EFV", "SCZ", "VEMAX", "SHV", "BWZ")
+
+style <- c("large cap blend", "large cap value", "small cap value", "real estate","intl large value", "intl small cap blend","emerging mkts lg blend","short term treasury","intl short-term treasury")
+
+df <- data.frame(ticker=symbols, style=style, fund_name=fund_names)
+knitr::kable(df[,1:2], col.names = c("ticker","style"))  
+```  
+  
+## Overview  
+  
+- Data Pull
+- Graphical Analysis  
+- Global Minimum Variance Portfolio
+- Maximize Return Given Risk Appetite  
+    + Monte Carlo with Bootstrapping  
+    + Normally Distributed Returns  
+    + Linear Programming  
+    + Quadratic Programming  
+  
+## Data Retrieval  
+  
+- Used the **quantmod** package to access Yahoo! Finance price data.  
+- `getSymbols()` retrieves historical prices.  
+- `adjustOHLC()` adjusts raw price data for dividends and splits.  
+- `monthlyReturn()` converts price data to monthly, percentage returns.  
+
+## Price History  
+  
+```{r results='hide'}
+# fund symbols
+symbols <- c("VLCAX","VVIAX", "VBR", "VGSLX", "EFV", "SCZ", "VEMAX", "SHV", "BWZ")
+
+# set historical start and end dates: pull 8 eight years of data, 
+beg = '2009-10-30' # last trading day in Oct 2009
+end = '2017-10-31'  
+
+# save time series daily for each fund as separate time series object
+getSymbols(symbols, src = "yahoo", from = beg, to = end)
+
+# calculate monthly return data
+ret_matrix <- matrix(NA,nrow = 96, ncol=0)
+for (i in symbols) {
+    temp_col <- as.numeric(monthlyReturn(adjustOHLC(eval(parse(text=i)),use.Adjusted=TRUE))[2:97])
+    ret_matrix <- cbind(ret_matrix,i=temp_col)
+}
+colnames(ret_matrix) <- symbols
+```  
+  
+```{r}
+# get price history of each fund and store in df
+price_df <- data.frame(date=as.Date(matrix(NA, nrow = 2014)))
+
+for (i in symbols) {
+    temp_col <- as.numeric(eval(parse(text=i))[,6])
+    price_df[, i] <- temp_col
+}
+
+price_df[,'date'] <- as.Date(index(temp_col))
+
+price_df <- price_df %>% gather(fund, price,2:10) # long format
+
+# plot price history
+ggplot(price_df, aes(date,price, col=fund)) + geom_line() + theme_bw() + 
+    labs(title = 'Adjusted Daily Prices', y = "price per share ($)", subtitle = "Nov 2009 - Oct 2017")
+
+```  
+
+## Monthly Returns  
+```{r}
+# monthly returns stored to df, long format
+ret_df <- data.frame(date = seq(as.Date("2009/11/1"), as.Date("2017/10/1"), "months"), ret_matrix)
+ret_df <- ret_df %>% gather(fund, return,2:10) 
+
+# plot
+ggplot(ret_df, aes(date, return*100)) + geom_line(aes(col=fund)) + 
+  facet_wrap(~fund, ncol=3) + labs(y = "return (%)") + 
+  theme_bw() + theme(panel.spacing = unit(1, "lines")) + 
+  labs(title="Adjusted Monthly Returns")
+
+```  
+
+## Risk vs. Reward  
+
+```{r}
+# calculate means and standard deviation, and covariance of each fund
+mean_vec <- apply(ret_matrix, 2, mean)
+sd_vec <- apply(ret_matrix,2, sd)
+cov_matrix <- cov(ret_matrix)
+
+# risk reward df
+rr_df <- data.frame(fund=names(mean_vec),return=mean_vec*100,risk=sd_vec*100, row.names=NULL )
+
+# plot
+ggplot(rr_df, aes(risk,return, col=fund)) + geom_point() + theme_bw() + 
+  geom_text_repel(mapping = aes(risk, return), data = rr_df, label = rr_df$fund) + 
+  labs(title = "Mean Monthly Returns vs. Standard Deviation", 
+       subtitle = "from Nov 2009 - Oct 2017", x="std deviation (%)", y= 'mean return (%)')
+
+```  
+  
+## Correlations{.smaller}  
+  
+```{r}
+corrplot(cor(ret_matrix, use="complete.obs", method='pearson'), type = "upper", order = "hclust")
+        
+
+```
+
+## Global Minimum Variance Portfolio {.smaller}  
+  
+This is a problem with a non-linear objective and one equality constraint.  We can solve analytically using method of Lagrange multipliers.  
+  
+Define:  
+$\sigma_{x,P}^2=$ portfolio variance  
+$\mathbf{x}=$ vector of portfolio weights  
+$\Sigma=$ covariance matrix  
+$\lambda=$ Lagrange multipler  
+  
+Objective:  
+
+$$\min_{\mathbf{x}}\sigma_{x,p}^2=\mathbf{x^T}\Sigma\mathbf{x~~\textrm{s.t.}~~\mathbf{x^T1}=1}$$   
+  
+Set up the Lagrangian function as follows:  
+  
+$$L(\mathbf{x},\lambda) = \mathbf{x^T}\Sigma\mathbf{x} + \lambda(\mathbf{x^T1}-1)$$ 
+  
+## GMVP/cont {.smaller}  
+  
+Take the partial derivatives with respect to each asset, $x_i$ and set equal to zero:  
+$$0=\frac{\partial L}{\partial x_i}=2x_i\sigma_i^2 + 2\sum_{i \neq j}\sigma_{ij} + \lambda$$
+Also take the partial derivative with respect to $\lambda$ and set equal to zero:  
+  
+$$0 = \frac{\partial L}{\partial \lambda}=\mathbf{x^T1}-1$$  
+Solve 10 equations with 10 unknowns:  
+ 
+```{r}
+# matrix A
+A <- rbind(cbind(2 * cov_matrix, rep(1,nrow(cov_matrix))),c(rep(1, ncol(cov_matrix)),0))
+
+# vector b
+b <- c(rep(0, nrow(cov_matrix)),1)
+
+# solve z
+z <-solve(A) %*% b
+
+# print porfolio weights and lambda parameter
+z_df <- data.frame(matrix(sprintf("%.2f%%", z*100),1,10))
+names(z_df) <- c(symbols, "lambda")
+print.data.frame(z_df, row.names = FALSE )  
+
+```  
+  
+Solution implies shorting several assets--not realistic for retirement account.  
+  
+## Monte Carlo with Bootstrapping{.smaller}  
+  
+- Simulation using sampling with replacement.  
+    + Can't simulate each asset's returns independently because of strong pairwise correlations.
+    + Solution: randomly sample from historical sets of monthly returns for all assets. 
+- Obective: maximize return given upper bound on standard deviaton.  
+- Nonlinear objective and nonlinear constraints.
+- Good brute force technique that requires minimal theory.  
+- Enumerate over universe of possible weights.  Keep universe small using simplying constraints.  
+    + Assume no asset gets more than 40% allocation.  
+    + assume discrete asset allocations in 10% increments(i.e. 0%, 10%, etc.).  
+      
+## MC / cont{.smaller}  
+  
+$\mathbf{\mu=}$ mean vector   
+$\sigma_{p,x}=$ portfolio standard deviation, scalar  
+$x_i=$ portfolio weight for asset $i$  
+$S=$ constant, max allowed standard deviation  
+
+Objective:  
+$$\max_{\mathbf{x}}\mathbf{x^T\mu}$$  
+subject to  
+$$\sum_{i=1}^Nx_i=1$$
+$$0\le x_i\le0.4~\textrm{for all }i$$
+$$100x_i\bmod10=0~\textrm{for all }i$$
+$$\sigma_{p,x} \le S $$ 
+      
+## MC Example Solution{.smaller}  
+
+```{r}
+# helper function: simulated returns for each asset using MC w/ bootstrapping
+bs_sim <- function(num_sims, return_matrix) {
+    
+    return(return_matrix[sample(nrow(return_matrix),num_sims, replace=TRUE),])
+}
+
+
+# helper function:  enumerate over all possible portfolio weights
+port_wts <- function(wt_vec, num_assets) {
+  I <- iterpc(table(wt_vec), num_assets,replace=TRUE, ordered=TRUE)
+  perms <- getall(I)
+  row_sums <- apply(perms,1,sum)
+  return(perms[row_sums == 1,]) # only return permutations where weights add to 1
+}
+
+
+# function to find max return given upper bound on sd
+bs_max_ret <- function(sim_matrix, wt_matrix, max_sd) {
+  sim_wt <- sim_matrix %*% t(wt_matrix)
+  bs_mean_vec <- apply(sim_wt,2,mean)
+   bs_sd_vec <- apply(sim_wt,2, sd)  
+  max_ret <- max(bs_mean_vec[bs_sd_vec <= max_sd])
+  max_pos <- which(bs_mean_vec == max_ret & bs_sd_vec <= max_sd)
+  wts <- as.numeric(wt_matrix[max_pos,])
+  names(wts) <- symbols
+  list(max_ret = max_ret, sd = bs_sd_vec[max_pos], weights=wts) 
+}
+   
+# bootstrap efficient frontier helper function
+eff_front_bs <- function(start, stop, by=0.01, sim=bs_sim_matrix, wt=wt_matrix) {
+    df <- data.frame(risk=numeric(),return=numeric())
+    for (i in seq(start,stop, by)) {
+        results <- bs_max_ret(sim, wt, i)
+        df <- rbind(df, data.frame(risk=results$sd*100,return=results$max_ret*100))
+        
+    }
+    df
+}
+
+bs_sim_matrix <- bs_sim(1000,ret_matrix) # simulate individual asset returns
+wt_matrix <- port_wts(c(0,0.1,0.2,0.3,0.4),9) # universe of potentail portfolio weights
+```  
+Maximize return assuming s.d. $\le$ 1.5%
+
+```{r}
+bs_max_ret(bs_sim_matrix, wt_matrix, 0.015) 
+```  
+  
+  
+## MC Efficient Frontier  
+
+```{r}
+# calculate return and sd for multiple worst case sd scenarious
+df <- eff_front_bs(0.014,0.04,0.002)
+
+#geom_smooth(col='green',se="false")
+# plot
+ggplot(df, aes(x=risk,y=return)) + geom_line(col="green") + 
+    geom_point(data = rr_df) + 
+    geom_text_repel(mapping = aes(risk, return), data = rr_df, label = rr_df$fund, col= "blue" ) + theme_bw() + 
+    labs(title = "Efficient frontier", subtitle = "Using Bootstrapped Returns",
+         x="std deviation (%)", y = "mean return (%)") 
+```  
+  
+## Normally Distributed Returns{.smaller}  
+  
+New terms:  
+$R_i=$ return for asset $i$  
+$\mathbf{R}=$ vector of returns, all assets  
+$\mu_{p,x}=$ mean portfolio return  
+  
+Assume:  
+$$R_i \sim  iid~ N(\mu_i,\sigma_i^2)$$
+$$cov(R_i,R_j) = \sigma_{ij}$$  
+Then the return of the portfolio is  
+
+$$\mu_{p,x}=E[\mathbf{x'R}]=\mathbf{x^T}E[\mathbf{R}]=\mathbf{x^T \mu}$$  
+The variance of the portfolio is:  
+  
+$$\sigma^2_{p,x}=\mathbf{x^T}\Sigma\mathbf{x}$$  
+  
+## Normally Distributed Returns / cont{.smaller}  
+  
+- Assume individual assets are normally distributed random variables.  Use historical historical means, variances as and covariances as parameter inputs.
+- No need for simulation, just calculated portfolio mean and variance given a set of weights.  
+- Objective: maximize return given upper bound on standard deviation.  
+- Same constraints used in MC problem.  
+- Enumerate over universe of possible weights, using simplifying constraints.  
+  
+## Normal Returns Example Solution{.smaller}  
+ 
+Maximize return assuming s.d. $\le$ 1.5%  
+
+```{r}
+norm_max_ret <- function(ret_matrix, wt_matrix, max_sd){
+  
+  # determine means and covariance matrix for assets 
+  mean_vec <- apply(ret_matrix, 2, mean)
+  cov_matrix <- cov(ret_matrix)
+
+  p_mean_vec <- wt_matrix %*% mean_vec
+  p_sd_vec <- numeric()
+  for (i in 1: nrow(wt_matrix)){
+      temp_sd <- sqrt(t(matrix(wt_matrix[i,])) %*% cov_matrix %*% wt_matrix[i,])
+      p_sd_vec <- c(p_sd_vec, temp_sd)
+      
+  }
+  
+  max_ret <- max(p_mean_vec[p_sd_vec <= max_sd])
+  max_pos <- which(p_mean_vec == max_ret & p_sd_vec <= max_sd)
+  wts <- as.numeric(wt_matrix[max_pos,])
+  names(wts) <- symbols
+  list(max_ret = max_ret, sd = p_sd_vec[max_pos], weights=wts)
+  
+}
+  
+norm_max_ret(ret_matrix,wt_matrix,0.015)
+
+```
+  
+## Normal Returns Efficient Frontier  
+  
+```{r}
+# normal dist efficiient fronter helper function
+eff_front_n <- function(start, stop, by=0.01,ret = ret_matrix, wt=wt_matrix) {
+    df <- data.frame(risk=numeric(),return=numeric())
+    for (i in seq(start,stop, by)) {
+        results <- norm_max_ret(ret, wt, i)
+        df <- rbind(df, data.frame(risk=results$sd*100,return=results$max_ret*100))
+        
+    }
+    df
+}
+
+
+# calculate return and sd for multiple worst case sd scenarious
+df <- eff_front_n(0.014,0.04,0.002)
+
+# plot
+ggplot(df, aes(x=risk,y=return)) + geom_line(col='green') + 
+    geom_point(data = rr_df) + 
+    geom_text_repel(mapping = aes(risk, return), data = rr_df, label = rr_df$fund, col= "blue" ) + theme_bw() + 
+    labs(title = "Efficient frontier", subtitle = "Assuming Normally Distributed Returns",
+         x="std deviation (%)", y = "mean return (%)") 
+
+```  
+
+## Linear Programming{.smaller}  
+
+- Cannot use variance or standard deviation as constraint because non-linear.  
+- Compromise: start with mean absolute deviation as constraint:  
+$$\frac{1}{T}\sum_{t=1}^T\Big|\sum_ix_i\big(R_i(t)-\mu_i\big)\Big| \le M\textrm{ where M constant}$$  
+  
+- Break out constraint above to satisfy linearity requirement:  
+$$\sum_ix_i\big(R_i(t)- \mathbf{\mu_i}\big) \le y_t \textrm{ for all }t$$  
+$$\sum_ix_i\big(R_i(t)- \mathbf{\mu_i}\big) \ge -y_t \textrm{ for all }t$$ 
+
+$$\frac{1}{T}\sum_{t=1}^{T}y_t \le M\textrm{ }$$  
+
+## Linear Programming / cont{.smaller}  
+  
+$$\max \mu_{p,x}= \sum_i x_i \mu_i$$  
+subject to  
+$$-y_t \le \sum_ix_i\big(R_i(t)- \mathbf{\mu_i}\big) \le y_t \textrm{ for all }t$$  
+$$\frac{1}{T}\sum_{t=1}^{T}y_t \le M\textrm{ }$$  
+$$\sum_{i}x_i = 1$$  
+$$0 \le x_i \le 0.4,~\textrm{for all }i,~~y_t \ge0,~\textrm{for all }t$$  
+
+## Linear Programming Example{.smaller} 
+  
+- Maximize return assuming mean absolute deviation $\le$ 1.5%.  
+- Use `lp()` from **lpSolve** package.
+  
+```{r}
+# function to maximize return given upper bound on mean absolute deviation
+opt_wt <- function(risk_aversion, return_matrix, max_wt) {
+    
+    
+    num_pd <- nrow(return_matrix) # number of periods
+    num_assets <- ncol(return_matrix) # number of assets under consideration
+    
+    # mean return vector for all aseets
+    mean_vec <- matrix(apply(return_matrix,MARGIN=2,mean))
+    
+    # objective function:  maximuize return
+    obj <- c(mean_vec, rep(0,num_pd))
+    
+    # initialize matrix, left hand side for constraints
+    A <- matrix(,num_pd*2,num_pd + num_assets)
+   
+    #  left side of constraint: - y_t + sum [ x_j * (R_j(t) - mean(x_j))] <= 0; perform for all t
+    for (i in 1:num_pd) { 
+        A[i,] <- c(return_matrix[i,] - t(matrix(mean_vec)), rep(0,num_pd))
+        A[i, i + num_assets] <- -1
+    }
+    
+    # left side of constraint: - y_t - sum [ x_j * (R_j(t) - mean(x_j))] <= 0; perform for all t
+    for (i in (num_pd+1):(2*num_pd)) {
+        A[i,] <- c(-(return_matrix[i-num_pd,] - t(matrix(mean_vec))), rep(0,num_pd))
+        A[i, i - num_pd + num_assets] <- -1
+    }
+    
+    # left hand side constraint: all weights less than max_weight
+    for (i in 1:num_assets) {
+        temp_row <- rep(0, num_assets + num_pd)
+        temp_row[i] <- 1
+        A <- rbind(A, temp_row)
+    }
+    
+    # left side of constraint: avg y_t value less than risk aversion parameter 
+    A <- rbind(A,c(rep(0,num_assets), rep(1, num_pd) / num_pd) )
+
+    
+    # left side constraint: asset weights sum to 1
+    A <- rbind(A, c(rep(1,num_assets), rep(0, num_pd)))
+    
+    
+    # constraint, left hand side:  all weights greater than 0  
+    for (i in 1:num_assets) {
+        temp_row <- rep(0, num_assets + num_pd)
+        temp_row[i] <- 1
+        A <- rbind(A, temp_row)
+    }
+
+    # constraint, left hand side:  all y_t values are greater than 0  
+    for (i in 1:num_pd) {
+        temp_row <- rep(0, num_assets + num_pd)
+        temp_row[i+num_assets] <- 1
+        A <- rbind(A, temp_row)
+    }
+    
+    
+    # constraint operators
+    const_op <- c(rep("<=",num_pd*2 + num_assets + 1),"=",rep(">=",num_assets + num_pd))
+
+    
+    # right side of constraint operator
+    b <- c(rep(0, num_pd*2), rep(max_wt, num_assets),risk_aversion, 1, rep(0, num_assets + num_pd))
+    
+    
+    # solve lp problem 
+    mylp <- lp("max", obj, A, const_op, b)
+    
+    # wt vector
+    wt <- mylp$solution[1:num_assets]
+    names(wt) <- symbols
+    
+    # compute mean abs deviation, portfolio
+    p_mean <- t(matrix(wt)) %*% mean_vec
+    
+    mad <- numeric()
+    for(i in 1: nrow(return_matrix)) {
+      temp <- abs((t(matrix(return_matrix[i,])) %*% wt) - p_mean)  
+      mad <- c(mad, temp)
+    }
+    mad <- sum(mad) / length(mad)
+    
+    return(list(max_ret=mylp$objval,mad=mad, weights=round(wt,2)))
+
+}
+
+opt_wt(0.015, ret_matrix,0.4)  
+```
+  
+   
+## Linear Programming Efficient Frontier{.smaller}  
+  
+```{r}
+
+# linear programm dist efficiient fronter helper function
+eff_front_lp <- function(start, stop, by=0.01,ret = ret_matrix) {
+    df <- data.frame(risk=numeric(),return=numeric())
+    for (i in seq(start,stop, by)) {
+        results <- opt_wt(i, ret, 0.4)
+        df <- rbind(df, data.frame(risk=results$mad*100,return=results$max_ret*100))
+        
+    }
+    df
+}
+
+
+# calculate return and sd for multiple worst case sd scenarious
+df <- eff_front_lp(0.014,0.06,0.002)
+
+
+# plot
+ggplot(df, aes(x=risk,y=return)) + geom_line(col='green') + 
+    geom_point(data = rr_df) + 
+    geom_text_repel(mapping = aes(risk, return), data = rr_df, label = rr_df$fund, col= "blue" ) + theme_bw() + 
+    labs(title = "Efficient Frontier", subtitle = "Using Linear Programming",
+         x="mean absolute deviation (%)", y = "mean return (%)") 
+
+```  
+  
+## Quadratic Programming  
+- Objective Function is quadratic; constraints are linear.  
+- Maximize a combination of reward and risk by varying risk aversion parameter, $q$.  
+- $q$ can vary from (0, $\infty$).  
+- Use `solve.QP` from `quadprog` package.
+  
+
+## Quadratic Programming / cont{.smaller}  
+  
+Define:  
+$q\ge 0$, constant  
+
+  
+Objective:  
+  
+$$\min~ \mathbf{x^T}\Sigma \mathbf{x} - q \mathbf{\mu^Tx}$$  
+subject to  
+$$\sum_{i}x_i = 1$$  
+$$0 \le x_i \le 0.4,~\textrm{for all }i$$  
+  
+## Quadratic Programming Example{.smaller}  
+  
+Optimize with $q = 0.5$.
+
+  
+```{r}
+max_wt <- 0.4
+
+
+qp_func <- function(q, return_matrix, max_wt) {  
+    Amat <- cbind(1, diag(ncol(return_matrix)), -diag(ncol(return_matrix)))
+    bvec <- c(1, rep(0, ncol(return_matrix)),rep(-max_wt, ncol(return_matrix))) 
+    Dmat <-  2*cov(return_matrix)  
+    dvec <- matrix(apply(return_matrix,MARGIN=2,mean)) 
+    
+    
+    qp_solve <- solve.QP(Dmat, dvec * q, Amat, bvec, meq=1, factorized=FALSE)  
+     
+    wts <- qp_solve$solution
+    names(wts) <- symbols
+    p_returns <- c()
+    for (i in 1:nrow(return_matrix)) {
+        p_returns <- c(p_returns, t(matrix(wts)) %*% return_matrix[i,])
+    }
+    
+    std_dev <- sd(p_returns)  
+    
+    mean_ret <- mean(p_returns) 
+    list(max_ret=mean_ret, sd=std_dev, weights=round(wts,1))
+    
+
+}
+
+
+qp_func(0.5, ret_matrix, 0.4)
+
+
+
+```  
+  
+## Quadratic Programming Efficient Frontier
+
+```{r eval=FALSE}
+```{r}
+
+# quadratic programm efficiient fronter helper function
+eff_front_qp <- function(start, stop, by=0.01,ret = ret_matrix) {
+    df <- data.frame(risk=numeric(),return=numeric())
+    for (i in seq(start,stop, by)) {
+        results <- qp_func(i, ret, 0.4)
+        df <- rbind(df, data.frame(risk=results$sd*100,return=results$max_ret*100))
+        
+    }
+    df
+}
+
+
+# calculate return and sd for multiple worst case sd scenarious
+df <- eff_front_qp(0.00,5,0.05)
+
+
+# plot
+ggplot(df, aes(x=risk,y=return)) + geom_line(col='green') + 
+    geom_point(data = rr_df) + 
+    geom_text_repel(mapping = aes(risk, return), data = rr_df, label = rr_df$fund, col= "blue" ) + theme_bw() + 
+    labs(title = "Efficient Frontier", subtitle = "Using Quadratic Programming",
+         x="std deviation (%)", y = "mean return (%)") 
+
+```  
+  
+## Conclusion  
+  
+- Investment science is field that relies heavily on optimization theory to make rational decisions.      
+  
+- There are often multiple approaches to a given optimization problem.
+  
+
+
+  
+
+  
+
+
+  
+
+
+  
+
+  
+
+
+  
+
+  
+
+
+
+
+  
+
+
+
+
